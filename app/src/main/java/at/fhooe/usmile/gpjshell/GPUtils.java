@@ -24,11 +24,17 @@ public class GPUtils {
 	}
 	
 	public static byte[] convertHexStringToByteArray(String string){
+		if (string == null || (string.length() % 2) != 0)
+			throw new IllegalArgumentException("Hex string must contain an even number of characters");
+
 		int len = string.length();
 	    byte[] data = new byte[len / 2];
 	    for (int i = 0; i < len; i += 2) {
-	        data[i / 2] = (byte) ((Character.digit(string.charAt(i), 16) << 4)
-	                             + Character.digit(string.charAt(i+1), 16));
+	    	int high = Character.digit(string.charAt(i), 16);
+	    	int low = Character.digit(string.charAt(i + 1), 16);
+	    	if (high < 0 || low < 0)
+	    		throw new IllegalArgumentException("Hex string contains non-hex characters");
+	        data[i / 2] = (byte) ((high << 4) + low);
 	    }
 	    return data;
 	}

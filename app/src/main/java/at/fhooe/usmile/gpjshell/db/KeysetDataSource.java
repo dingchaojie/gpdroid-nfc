@@ -51,9 +51,10 @@ public class KeysetDataSource {
 
 		//if it is a new keyset, then uid is preset to -1
 		if (keyset.getUniqueID() == -1) {
-			if (containsKeyset(keyset.getName(), keyset.getReaderName()))
+			if (containsKeyset(keyset.getName(), keyset.getReaderName(), keyset.getID()))
 				mDatabase.update(DatabaseConnection.TABLE_KEYSETS, values,
 						DatabaseConnection.COLUMN6_NAME + "='" + keyset.getName() + "' AND "
+								+ DatabaseConnection.COLUMN1_KEYSET_ID + "='" + keyset.getID() + "' AND "
 								+ DatabaseConnection.COLUMN7_READER + "='" + keyset.getReaderName()
 								+ "'", null);
 			else
@@ -70,13 +71,22 @@ public class KeysetDataSource {
 	}
 
 	public boolean containsKeyset(String name, String reader) {
+		return containsKeyset(name, reader, -1);
+	}
+
+	public boolean containsKeyset(String name, String reader, int keyId) {
+		String whereClause = DatabaseConnection.COLUMN6_NAME + "='" + name + "' AND "
+				+ DatabaseConnection.COLUMN7_READER + "='" + reader + "'";
+		if (keyId >= 0) {
+			whereClause += " AND " + DatabaseConnection.COLUMN1_KEYSET_ID + "='" + keyId + "'";
+		}
+
 		return mDatabase.query(
 				DatabaseConnection.TABLE_KEYSETS,
 				new String[] { DatabaseConnection.COLUMN6_NAME,
-						DatabaseConnection.COLUMN7_READER },
-				DatabaseConnection.COLUMN6_NAME + "='" + name + "' AND "
-						+ DatabaseConnection.COLUMN7_READER + "='" + reader
-						+ "'", null, null, null, null).getCount() > 0;
+						DatabaseConnection.COLUMN7_READER,
+						DatabaseConnection.COLUMN1_KEYSET_ID },
+				whereClause, null, null, null, null).getCount() > 0;
 	}
 	
 	public boolean containsUID(int id) {
@@ -133,6 +143,13 @@ public class KeysetDataSource {
 	public int removeByName(String name) {
 		return mDatabase.delete(DatabaseConnection.TABLE_KEYSETS,
 				DatabaseConnection.COLUMN6_NAME + "='" + name + "'", null);
+	}
+
+	public int removeByNameReaderAndKeyId(String name, String reader, int keyId) {
+		return mDatabase.delete(DatabaseConnection.TABLE_KEYSETS,
+				DatabaseConnection.COLUMN6_NAME + "='" + name + "' AND "
+						+ DatabaseConnection.COLUMN7_READER + "='" + reader + "' AND "
+						+ DatabaseConnection.COLUMN1_KEYSET_ID + "='" + keyId + "'", null);
 	}
 
 }

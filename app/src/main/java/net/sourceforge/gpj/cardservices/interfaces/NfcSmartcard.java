@@ -14,9 +14,11 @@ import android.nfc.tech.IsoDep;
 public class NfcSmartcard extends Card {
 
 	private IsoDep mIsoDep = null;
+	private NfcTerminal mTerminal = null;
 	
-	public NfcSmartcard(IsoDep isoDep) {
+	public NfcSmartcard(IsoDep isoDep, NfcTerminal terminal) {
 		mIsoDep = isoDep;
+		mTerminal = terminal;
 	}
 	
 	@Override
@@ -60,13 +62,19 @@ public class NfcSmartcard extends Card {
 
 	@Override
 	public void disconnect(boolean reset) throws CardException {
-		// TODO Auto-generated method stub
+		// Keep the tapped IsoDep handle available while the card remains in the field.
+		// Android invalidates it on real I/O failure, which is handled in transmit/connect.
 		
 	}
 
 	public ResponseAPDU transmit(CommandAPDU cmd) throws IOException, CardException {
 		connect();
-		return new ResponseAPDU(mIsoDep.transceive(cmd.getBytes()));
+		try {
+			return new ResponseAPDU(mIsoDep.transceive(cmd.getBytes()));
+		} catch (IOException e) {
+			clearTag();
+			throw e;
+		}
 		
 	}
 	
@@ -78,10 +86,18 @@ public class NfcSmartcard extends Card {
 			try {
 				mIsoDep.connect();
 			} catch (IOException e) {
+				clearTag();
 				throw new CardException("Error connecting to tag");
 			}
 			mIsoDep.setTimeout(30000);
 		}
+	}
+
+	private void clearTag() {
+		if (mTerminal != null) {
+			mTerminal.clearTag();
+		}
+		mIsoDep = null;
 	}
 
 	public boolean supportsExtendedLengthApdus() {

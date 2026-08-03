@@ -25,7 +25,7 @@
     <string name="keyset_kek">KEK</string>
     <string name="keyset_positive">OK</string>
     <string name="keyset_negative">Cancel</string>
-    <string name="keyset_descr">Hint: type in hex-values (e.g. &quot;FACD008020&quot;)</string>
+    <string name="keyset_descr">Hint: MAC, ENC and KEK must each be 16-byte hex values (32 hex characters)</string>
     <string name="keyset_dialog_title">Keyset ID already exists!</string>
     <string name="keyset_dialog_ask_overwrite">Do you want to overwrite this keyset?</string>
 

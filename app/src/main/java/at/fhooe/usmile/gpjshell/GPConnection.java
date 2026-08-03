@@ -360,9 +360,11 @@ public class GPConnection {
 
 			open();
 
-			// opening channel with index of keyset - is unique
+			// Use keyset ID as the local key profile slot, but open the
+			// card's default GP key ID/version. Custom TK profiles like
+			// "NXP-J3R452 - 2" are local alternatives for the same card SD.
 			openSecureChannel(keyset.getID(),
-					keyset.getID(), keyset.getVersion(),
+					0, 0,
 					channelSet.getScpVersion(), channelSet.getSecurityLevel(),
 					channelSet.isGemalto());
 

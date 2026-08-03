@@ -1,5 +1,7 @@
 package net.sourceforge.gpj.cardservices.interfaces;
 
+import java.io.IOException;
+
 import javax.smartcardio.Card;
 import javax.smartcardio.CardException;
 import javax.smartcardio.CardTerminal;
@@ -33,7 +35,7 @@ public class NfcTerminal extends GPTerminal {
 	
 	public Card connect(String unused) throws CardException {
 		if(mAvailableTag != null) {
-			return new NfcSmartcard(mAvailableTag);
+			return new NfcSmartcard(mAvailableTag, this);
 		}
 		throw new CardException("NFC card not present");
 	}
@@ -74,20 +76,39 @@ public class NfcTerminal extends GPTerminal {
 
 	@Override
 	public void shutdown() {
-		// TODO Auto-generated method stub
+		// Keep the current NFC tag while Android temporarily pauses this activity
+		// for file picking or other UI overlays. Stale tags are cleared on I/O failure
+		// or when a new IsoDep tag is received.
 		
 	}
 
 	@Override
 	public boolean isConnected() {
-		// TODO Auto-generated method stub
 		return mAvailableTag != null;
 	}
 
 
 	public boolean passTag(Tag tag) {
-		mAvailableTag = IsoDep.get(tag);
-		return mAvailableTag != null;
+		IsoDep isoDep = IsoDep.get(tag);
+		if (isoDep == null) {
+			return false;
+		}
+		clearTag();
+		mAvailableTag = isoDep;
+		return true;
+	}
+
+	public void clearTag() {
+		if (mAvailableTag != null) {
+			try {
+				if (mAvailableTag.isConnected()) {
+					mAvailableTag.close();
+				}
+			} catch (IOException e) {
+				// Ignore cleanup errors; a failed close means the tag is already gone.
+			}
+		}
+		mAvailableTag = null;
 	}
 
 }

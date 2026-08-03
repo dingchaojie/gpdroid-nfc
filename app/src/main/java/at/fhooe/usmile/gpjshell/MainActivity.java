@@ -118,6 +118,7 @@ public class MainActivity extends Activity implements SEService.CallBack,
 	private TCPConnection mTCPConnection = null;
 	private ArrayAdapter<String> mKeysetAdapter;
 	private ArrayAdapter<String> mChannelSetAdapter;
+	private String mSelectedKeysetName = null;
 
 	public enum APDU_COMMAND {
 		APDU_INSTALL, APDU_DELETE_SENT_APPLET, APDU_DISPLAYAPPLETS_ONCARD, APDU_SELECT, APDU_SEND, APDU_GET_DATA,
@@ -270,27 +271,12 @@ public class MainActivity extends Activity implements SEService.CallBack,
 
 	private void seedDefaultKeyset(KeysetDataSource source, String reader, String name, String mac, String enc,
 			String dek) {
-		Map<String, GPKeyset> existingKeys = source.getKeysets(reader);
-		boolean needsSeed = true;
-		if (existingKeys != null) {
-			for (GPKeyset k : existingKeys.values()) {
-				if (k.getName().equals(name)) {
-					if (k.getID() != 0) {
-						source.remove(k.getUniqueID());
-					} else {
-						needsSeed = false;
-					}
-				}
-			}
-		}
-
-		if (needsSeed) {
-			GPKeyset defaultKeys = new GPKeyset(
-					(int) (System.currentTimeMillis() / 1000) + name.hashCode(), // uniqueID
-					name, 0, 0, mac, enc, dek, reader);
-			source.insertKeyset(defaultKeys);
-			Log.d("GPDroid", "Default " + name + " Keyset Seeded.");
-		}
+		source.removeByNameReaderAndKeyId(name, reader, 0);
+		GPKeyset defaultKeys = new GPKeyset(
+				(int) (System.currentTimeMillis() / 1000) + name.hashCode(), // uniqueID
+				name, 0, 0, mac, enc, dek, reader);
+		source.insertKeyset(defaultKeys);
+		Log.d("GPDroid", "Default " + name + " Keyset Refreshed.");
 	}
 
 	protected Dialog onCreateDialog(int id, Bundle args) {
@@ -499,7 +485,8 @@ public class MainActivity extends Activity implements SEService.CallBack,
 							runMifareTest(tag);
 						} else {
 							if (mTerminal != null) {
-								((NfcTerminal) mTerminal).passTag(tag);
+								boolean tagAccepted = ((NfcTerminal) mTerminal).passTag(tag);
+								MAIN_Log.d(LOG_TAG, tagAccepted ? "NFC IsoDep tag ready" : "NFC tag is not IsoDep");
 								if (mTerminal.isConnected()) {
 									serviceConnected(null);
 									Log.d(LOG_TAG, "Card detected");
@@ -553,6 +540,20 @@ public class MainActivity extends Activity implements SEService.CallBack,
 		mKeysetAdapter.setNotifyOnChange(true);
 
 		mKeysetSpinner.setAdapter(mKeysetAdapter);
+		mKeysetSpinner.setOnItemSelectedListener(new OnItemSelectedListener() {
+
+			@Override
+			public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+				Object selected = parent.getItemAtPosition(position);
+				if (selected != null) {
+					mSelectedKeysetName = selected.toString();
+				}
+			}
+
+			@Override
+			public void onNothingSelected(AdapterView<?> parent) {
+			}
+		});
 		mKeysetAdapter.notifyDataSetChanged();
 	}
 
@@ -576,6 +577,42 @@ public class MainActivity extends Activity implements SEService.CallBack,
 				.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
 		mChannelSpinner.setAdapter(mChannelSetAdapter);
 		mChannelSetAdapter.notifyDataSetChanged();
+	}
+
+	private void selectKeyset(String exactName, String fallbackPrefix) {
+		if (mKeysetSpinner == null || mKeysetAdapter == null) {
+			return;
+		}
+
+		if (exactName != null) {
+			for (int i = 0; i < mKeysetAdapter.getCount(); i++) {
+				String item = mKeysetAdapter.getItem(i);
+				if (exactName.equals(item)) {
+					mKeysetSpinner.setSelection(i);
+					mSelectedKeysetName = item;
+					return;
+				}
+			}
+		}
+
+		for (int i = 0; i < mKeysetAdapter.getCount(); i++) {
+			String item = mKeysetAdapter.getItem(i);
+			if (item != null && item.startsWith(fallbackPrefix)) {
+				mKeysetSpinner.setSelection(i);
+				mSelectedKeysetName = item;
+				return;
+			}
+		}
+	}
+
+	private String shortHex(String value) {
+		if (value == null) {
+			return "null";
+		}
+		if (value.length() <= 8) {
+			return value;
+		}
+		return value.substring(0, 4) + "..." + value.substring(value.length() - 4);
 	}
 
 	// add items into spinner dynamically
@@ -635,16 +672,11 @@ public class MainActivity extends Activity implements SEService.CallBack,
 					source.close();
 					// --- SEEDING LOGIC END ---
 
+					String preferredKeysetName = mSelectedKeysetName;
 					List<String> keysetNames = Arrays.asList(mKeysetMap.keySet().toArray(new String[0]));
 					addKeysetItemsOnSpinner(keysetNames);
 
-					// Auto-select the NXP-J3R200 keyset in the UI
-					for (int i = 0; i < keysetNames.size(); i++) {
-						if (keysetNames.get(i).startsWith("NXP-J3R200")) {
-							mKeysetSpinner.setSelection(i);
-							break;
-						}
-					}
+					selectKeyset(preferredKeysetName, "NXP-J3R452 - 0");
 
 					ChannelSetDataSource channelSource = new ChannelSetDataSource(MainActivity.this);
 					channelSource.open();
@@ -662,6 +694,10 @@ public class MainActivity extends Activity implements SEService.CallBack,
 				@Override
 				public void onClick(View v) {
 					try {
+						if (mTerminal == null || !mTerminal.isConnected()) {
+							MAIN_Log.d(LOG_TAG, "No active NFC tag. Tap card, then press Install Applet again.");
+							return;
+						}
 						performCommand(APDU_COMMAND.APDU_INSTALL,
 								mReaderSpinner.getSelectedItemPosition(), null,
 								(byte) 0, mAppletUrl);
@@ -763,10 +799,21 @@ public class MainActivity extends Activity implements SEService.CallBack,
                     try {
                         byte[] licenseData;
                         if (mCheckNumeric.isChecked()) {
-                            // Numeric Mode: "452941" -> 04 05 02 09 04 01
-                            licenseData = new byte[licenseStr.length()];
+                            if (licenseStr.length() != 4) {
+                                MAIN_Log.d(LOG_TAG, "Numeric license must be 4 digits.");
+                                return;
+                            }
+
+                            // Numeric Mode: "0436" -> 00 04 03 06 00 00.
+                            // The applet validates the first 4 digits but requires Lc >= 6.
+                            licenseData = new byte[6];
                             for (int i = 0; i < licenseStr.length(); i++) {
-                                licenseData[i] = (byte) Character.getNumericValue(licenseStr.charAt(i));
+                                int digit = Character.getNumericValue(licenseStr.charAt(i));
+                                if (digit < 0 || digit > 9) {
+                                    MAIN_Log.d(LOG_TAG, "Numeric license must contain digits only.");
+                                    return;
+                                }
+                                licenseData[i] = (byte) digit;
                             }
                         } else {
                             // Default to Hex/BCD
@@ -915,13 +962,19 @@ public class MainActivity extends Activity implements SEService.CallBack,
 	 */
 	private void performCommand(APDU_COMMAND _cmd, int _seekReader,
 			byte[] _params, byte _privileges, Object _cmdParam) {
+		if (mTerminal == null) {
+			MAIN_Log.d(LOG_TAG, "Tap card first!");
+			return;
+		}
 		GPCommand c = new GPCommand(_cmd, _seekReader, _params, _privileges,
 				_cmdParam);
 		c.setReaderName(mReaderSpinner.getSelectedItem().toString());
 		if (mTerminal.isConnected()) {
+			MAIN_Log.d(LOG_TAG, "Executing command: " + _cmd);
 			new PerformCommandTask().execute(c);
 		} else {
 			mCommandExecutionQueue.add(c);
+			MAIN_Log.d(LOG_TAG, "No active NFC tag. Command queued; tap card again.");
 		}
 	}
 
@@ -953,6 +1006,15 @@ public class MainActivity extends Activity implements SEService.CallBack,
 			if (_cmd.length <= 0)
 				return null;
 
+			if (keyset != null) {
+				MAIN_Log.d(LOG_TAG, "Using keyset: " + keyset.getDisplayName()
+						+ " version=" + keyset.getVersion()
+						+ " cardKey=0/0"
+						+ " enc=" + shortHex(keyset.getENC())
+						+ " mac=" + shortHex(keyset.getMAC())
+						+ " kek=" + shortHex(keyset.getKEK()));
+			}
+
 			String ret = null;
 
 			ret = GPConnection.getInstance(MainActivity.this).performCommand(
@@ -961,7 +1023,14 @@ public class MainActivity extends Activity implements SEService.CallBack,
 		}
 
 		protected void onPostExecute(String _resultString) {
+			if (_resultString == null) {
+				MAIN_Log.d(LOG_TAG, "Command failed. Tap card again and retry.");
+				return;
+			}
 			MAIN_Log.d(LOG_TAG, _resultString);
+			if (_resultString != null && _resultString.contains("Error connecting to tag")) {
+				MAIN_Log.d(LOG_TAG, "NFC connection was reset. Remove the card and tap it again.");
+			}
 		}
 	}
 
