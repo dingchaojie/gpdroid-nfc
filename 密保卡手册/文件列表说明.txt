@@ -1,4 +1,0 @@
-CodeBook.apk     : 安卓手机侧用户app
-gpdroid-nfc.apk  : 安卓手机侧出厂前设置卡的app
-one.cap          : NXP卡内程序，通过gpdroid-nfc.apk写入卡内
-用户手册.docx    : 用户手册中文  
