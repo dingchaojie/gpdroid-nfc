@@ -18,6 +18,7 @@ import android.content.SharedPreferences.Editor;
 
 public class AppPreferences {
     public static final String KEY_PREFS_SELECTED_CAP = "applet_selected_cap";
+    public static final String KEY_PREFS_LICENSE_FAILURES = "license_failures";
     private static final String APP_SHARED_PREFS = AppPreferences.class.getSimpleName(); //  Name of the file -.xml
     private SharedPreferences mSharedPrefs;
     private Editor mPrefsEditor;
@@ -33,6 +34,15 @@ public class AppPreferences {
 
     public void saveSelectedCap(String text) {
         mPrefsEditor.putString(KEY_PREFS_SELECTED_CAP, text);
+        mPrefsEditor.commit();
+    }
+
+    public int getLicenseFailures() {
+        return mSharedPrefs.getInt(KEY_PREFS_LICENSE_FAILURES, 0);
+    }
+
+    public void saveLicenseFailures(int failures) {
+        mPrefsEditor.putInt(KEY_PREFS_LICENSE_FAILURES, failures);
         mPrefsEditor.commit();
     }
 }

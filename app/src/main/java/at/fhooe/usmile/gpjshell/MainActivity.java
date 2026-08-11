@@ -90,6 +90,7 @@ public class MainActivity extends Activity implements SEService.CallBack,
 	public final static int ACTIVITYRESULT_GET_DATA = 105;
 	public final static int ACTIVITYRESULT_APPLET_INSTALL_TEST = 106;
 	private static final int REQUEST_CODE = 1234;
+	private static final int MAX_CONSECUTIVE_LICENSE_FAILURES = 6;
 	private TextView mLog;
 
 	// UI Elements
@@ -108,6 +109,7 @@ public class MainActivity extends Activity implements SEService.CallBack,
 	private android.widget.CheckBox mCheckNumeric = null;
 	private Button mButtonCopyLog = null;
 	private Button mButtonClearLog = null;
+	private int mConsecutiveLicenseFailures = 0;
 
 	private static LogMe MAIN_Log;
 
@@ -328,6 +330,46 @@ public class MainActivity extends Activity implements SEService.CallBack,
 			mAppletUrl = prefs.getSelectedCap();
 			mFileNameView.setText(Uri.parse(mAppletUrl).getLastPathSegment());
 		}
+		mConsecutiveLicenseFailures = prefs.getLicenseFailures();
+	}
+
+	private boolean isLicenseEntryLocked() {
+		return mConsecutiveLicenseFailures >= MAX_CONSECUTIVE_LICENSE_FAILURES;
+	}
+
+	private void updateLicenseEntryState() {
+		if (mEditLicense == null || mButtonActivateCard == null) {
+			return;
+		}
+
+		boolean locked = isLicenseEntryLocked();
+		mEditLicense.setEnabled(!locked);
+		mButtonActivateCard.setEnabled(!locked);
+		if (locked) {
+			mEditLicense.setText("");
+			mEditLicense.setHint("License locked");
+		} else {
+			mEditLicense.setHint("4-digit license");
+		}
+	}
+
+	private void resetLicenseFailures() {
+		mConsecutiveLicenseFailures = 0;
+		new AppPreferences(getApplicationContext()).saveLicenseFailures(mConsecutiveLicenseFailures);
+		updateLicenseEntryState();
+	}
+
+	private void recordLicenseFailure() {
+		mConsecutiveLicenseFailures++;
+		new AppPreferences(getApplicationContext()).saveLicenseFailures(mConsecutiveLicenseFailures);
+
+		if (isLicenseEntryLocked()) {
+			MAIN_Log.d(LOG_TAG, "License entry locked after 6 consecutive wrong licenses.");
+		} else {
+			int remainingAttempts = MAX_CONSECUTIVE_LICENSE_FAILURES - mConsecutiveLicenseFailures;
+			MAIN_Log.d(LOG_TAG, "Wrong license. " + remainingAttempts + " attempt(s) remaining before lock.");
+		}
+		updateLicenseEntryState();
 	}
 
 	@Override
@@ -629,6 +671,7 @@ public class MainActivity extends Activity implements SEService.CallBack,
 		mCheckNumeric = (android.widget.CheckBox) findViewById(R.id.check_numeric);
 		mButtonCopyLog = (Button) findViewById(R.id.btn_copy_log);
 		mButtonClearLog = (Button) findViewById(R.id.btn_clear_log);
+		updateLicenseEntryState();
 
 		if (mReaderSpinner != null) {
 			List<String> list = new ArrayList<String>();
@@ -785,6 +828,12 @@ public class MainActivity extends Activity implements SEService.CallBack,
             mButtonActivateCard.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
+                    if (isLicenseEntryLocked()) {
+                        MAIN_Log.d(LOG_TAG, "License entry is locked after 6 consecutive wrong licenses.");
+                        updateLicenseEntryState();
+                        return;
+                    }
+
                     if (mTerminal == null || !mTerminal.isConnected()) {
                         MAIN_Log.d(LOG_TAG, "Tap card first!");
                         return;
@@ -861,8 +910,10 @@ public class MainActivity extends Activity implements SEService.CallBack,
 
                         if (respHex.endsWith("9000")) {
                             MAIN_Log.d(LOG_TAG, "SUCCESS: Card Activated!");
+                            resetLicenseFailures();
                         } else {
                             MAIN_Log.d(LOG_TAG, "Failed: Activation error " + respHex);
+                            recordLicenseFailure();
                         }
 
                         card.disconnect(false);
